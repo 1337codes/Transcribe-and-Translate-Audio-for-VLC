@@ -60,7 +60,7 @@ def transcribe_audio(model, audio_path):
 def translate_text(text, target_language):
     print(f"Translating text to {target_language}...")
     response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
+        model="gpt-4",
         messages=[
             {"role": "system", "content": f"Translate the following text to {target_language}."},
             {"role": "user", "content": text}
@@ -99,7 +99,7 @@ def main():
     # Transcribe the audio file
     result = transcribe_audio(model, audio_path)
 
-    # Translate each segment using OpenAI ChatGPT
+    # Translate each segment using OpenAI GPT-4
     for segment in result['segments']:
         segment['text'] = translate_text(segment['text'], language)
 
