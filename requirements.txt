@@ -3,3 +3,4 @@ whisper
 ffmpeg-python
 tiktoken
 numba
+openai
