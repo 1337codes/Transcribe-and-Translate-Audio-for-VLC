@@ -2,3 +2,4 @@ torch
 whisper
 ffmpeg-python
 tiktoken
+numba
