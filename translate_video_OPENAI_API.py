@@ -1,65 +1,72 @@
-import whisper
-import ffmpeg
 import os
-import readline
-from autocorrect import Speller
-import glob
-import time
-import openai
-import warnings
+import subprocess
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
+from openai import OpenAI
+import whisper
+from ratelimit import limits, sleep_and_retry
+from tqdm import tqdm
+import torch
+import moviepy.editor as mp
+import srt
+from datetime import timedelta
 
-# Set your OpenAI API key
-openai.api_key = 'YOUR_OPENAI_API_KEY'
+# Constants
+THREE_REQUESTS_PER_MINUTE = 3
+ONE_MINUTE = 60
 
-# Suppress the specific warning
-warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
+# Ensure the API key is set
+api_key = os.getenv('OPENAI_API_KEY')
+if not api_key:
+    print("Error: The OPENAI_API_KEY environment variable is not set.")
+    exit(1)
 
-def extract_audio(video_path):
-    video_dir, video_name = os.path.split(video_path)
-    audio_name = os.path.splitext(video_name)[0] + ".wav"
-    audio_path = os.path.join(video_dir, audio_name)
-    print(f"Extracting audio from the video to {audio_path}...")
-    start_time = time.time()
-    ffmpeg.input(video_path).output(audio_path, **{'q:a': 0, 'map': 'a'}).run()
-    end_time = time.time()
-    print(f"Audio extracted and saved to {audio_path}. Time taken: {end_time - start_time:.2f} seconds.")
-    return audio_path
+client = OpenAI(api_key=api_key)
 
-def save_to_srt(transcription, srt_file):
-    print("Saving transcription to SRT file...")
-    start_time = time.time()
-    with open(srt_file, "w", encoding="utf-8") as f:
-        for i, segment in enumerate(transcription['segments']):
-            start = segment['start']
-            end = segment['end']
-            text = segment['text']
-            start_time_code = format_timestamp(start)
-            end_time_code = format_timestamp(end)
-            f.write(f"{i+1}\n{start_time_code} --> {end_time_code}\n{text}\n\n")
-    end_time = time.time()
-    print(f"Transcription saved to {srt_file}. Time taken: {end_time - start_time:.2f} seconds.")
+# Functions
+@sleep_and_retry
+@limits(calls=THREE_REQUESTS_PER_MINUTE, period=ONE_MINUTE)
+def check_openai_api():
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": "This is a test."}]
+        )
+        print("OpenAI API key is valid.")
+        return True
+    except Exception as e:
+        print(f"OpenAI API key validation failed: {e}")
+        return False
 
-def format_timestamp(seconds):
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    seconds = int(seconds % 60)
-    milliseconds = int((seconds * 1000) % 1000)
-    return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
+def install_whisper():
+    print("Installing Whisper and dependencies...")
+    commands = [
+        ["pip", "install", "-U", "openai-whisper"],
+        ["sudo", "apt", "update"],
+        ["sudo", "apt", "install", "-y", "ffmpeg"]
+    ]
+    for command in commands:
+        try:
+            subprocess.run(command, check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to execute {command}: {e}")
+            exit(1)
+    print("Whisper installation complete.")
 
-def complete_path(text, state):
-    return (glob.glob(text + '*') + [None])[state]
+def convert_video_to_audio(video_file, output_format='mp3'):
+    video = mp.VideoFileClip(video_file)
+    audio_file = video_file.replace(video_file.split('.')[-1], output_format)
+    video.audio.write_audiofile(audio_file)
+    return audio_file
 
-def transcribe_audio(model, audio_path):
-    print("Transcribing the audio...")
-    start_time = time.time()
-    result = model.transcribe(audio_path)
-    end_time = time.time()
-    print(f"Audio transcribed. Time taken: {end_time - start_time:.2f} seconds.")
+def translate_with_whisper(file_path, model_size="base"):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = whisper.load_model(model_size).to(device)
+    result = model.transcribe(file_path)
     return result
 
 def translate_text(text, target_language):
-    print(f"Translating text to {target_language}...")
-    response = openai.ChatCompletion.create(
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[
             {"role": "system", "content": f"Translate the following text to {target_language}."},
@@ -69,46 +76,56 @@ def translate_text(text, target_language):
     translated_text = response.choices[0].message['content'].strip()
     return translated_text
 
+def select_video_file():
+    Tk().withdraw()  # Close the root window
+    file_path = askopenfilename(filetypes=[("Video files", "*.mp4 *.flv *.mkv *.avi *.mov")])
+    return file_path
+
+def create_srt(transcription, translated_text, output_file):
+    segments = transcription['segments']
+    subtitles = []
+    for i, segment in enumerate(segments):
+        start = timedelta(seconds=segment['start'])
+        end = timedelta(seconds=segment['end'])
+        content = translated_text[i] if i < len(translated_text) else ""
+        subtitle = srt.Subtitle(index=i, start=start, end=end, content=content)
+        subtitles.append(subtitle)
+    srt_content = srt.compose(subtitles)
+    with open(output_file, 'w') as f:
+        f.write(srt_content)
+
 def main():
-    spell = Speller(lang='en')
-    readline.set_completer(complete_path)
-    readline.parse_and_bind('tab: complete')
+    if check_openai_api():
+        print("Using OpenAI API for translation.")
+    else:
+        print("Falling back to using Whisper for translation.")
+        install_whisper()
+
+    video_file = select_video_file()
+    if not video_file:
+        print("No video file selected. Exiting.")
+        exit(1)
+
+    print(f"Selected video file: {video_file}")
     
-    # Prompt for the video file
-    video_path = input(f"Enter the path to the video file (current directory: {os.getcwd()}): ")
-    corrected_video_path = spell(video_path)
-    
-    if not os.path.exists(corrected_video_path):
-        print("Video file does not exist.")
-        return
-    
-    # Prompt for the translation language
-    language = input("Enter the language code for translation (e.g., nl for Dutch, fr for French, en for English): ")
+    print("Converting video to audio...")
+    audio_file = convert_video_to_audio(video_file)
+    print(f"Audio file created: {audio_file}")
 
-    # Extract audio from video
-    audio_path = extract_audio(corrected_video_path)
+    print("Transcribing audio with Whisper...")
+    transcription = translate_with_whisper(audio_file, model_size="base")
+    transcribed_text = transcription['text']
+    segments = transcription['segments']
+    print(f"Transcribed text: {transcribed_text}")
 
-    try:
-        # Load the Whisper model
-        print("Loading the Whisper model (large)... This might take a while.")
-        model = whisper.load_model("large")
-    except MemoryError:
-        print("MemoryError: Switching to smaller model...")
-        model = whisper.load_model("small")
+    target_language = input("Enter the target language for translation (e.g., 'Dutch', 'English'): ").strip()
+    print(f"Translating text to {target_language}...")
+    translated_text = translate_text(transcribed_text, target_language)
+    print(f"Translated text: {translated_text}")
 
-    # Transcribe the audio file
-    result = transcribe_audio(model, audio_path)
-
-    # Translate each segment using OpenAI GPT-4
-    for segment in result['segments']:
-        segment['text'] = translate_text(segment['text'], language)
-
-    # Save the translation to a subtitle file in SRT format
-    video_dir, video_name = os.path.split(corrected_video_path)
-    srt_file = os.path.join(video_dir, os.path.splitext(video_name)[0] + ".srt")
-    save_to_srt(result, srt_file)
-
-    print(f"Subtitle file saved as {srt_file}")
+    srt_file = video_file.replace(video_file.split('.')[-1], 'srt')
+    create_srt(transcription, translated_text.split('\n'), srt_file)
+    print(f"Subtitle file created: {srt_file}")
 
 if __name__ == "__main__":
     main()
