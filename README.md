@@ -1,46 +1,8 @@
 # Video Translation and Subtitle Generator
 
-This project uses OpenAI's Whisper model to translate a video into a specified language and generate subtitles in the SRT format. The generated subtitles can then be used in video players like VLC.
+Translate videos to subtitles using Whisper and OpenAI GPT-4.
 
-OPSEC Note
-Once Whisper has run once, all following translations will be done offline, ensuring no data is sent to external servers.
-
-## Prerequisites
-
-Before you begin, ensure you have the following installed:
-
-- Python 3.6 or later
-- `pip` (Python package installer)
-- `ffmpeg`
-
-## Installation
-
-1. **Clone the repository:**
-
-   ```sh
-   git clone https://github.com/1337codes/Transcribe-and-Translate-Audio-for-VLC.git
-   cd Transcribe-and-Translate-Audio-for-VLC
-Install the required dependencies:
-
-sh
-Copy code
-pip install -r requirements.txt
-Usage
-Run the script:
-
-sh
-Copy code
-python3 translate_video.py
-Follow the prompts:
-
-Enter the path to your video file.
-Enter the language code for translation (e.g., nl for Dutch, fr for French).
-Add subtitles to VLC:
-
-Open VLC and play your video.
-Go to Subtitle > Add Subtitle File...
-Select the generated subtitles.srt file.
-Example
-
-Enter the path to the video file: /path/to/your/video.mp4
-Enter the language code for translation (e.g., nl for Dutch, fr for French): nl
+## Setup
+1. Install dependencies: `pip install -r requirements.txt`
+2. Set API key: `export OPENAI_API_KEY="your-api-key"`
+3. Run: `python3 translate_video.py`
