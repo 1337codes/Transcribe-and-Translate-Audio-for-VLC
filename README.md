@@ -2,6 +2,9 @@
 
 This project uses OpenAI's Whisper model to translate a video into a specified language and generate subtitles in the SRT format. The generated subtitles can then be used in video players like VLC.
 
+OPSEC Note
+Once Whisper has run once, all following translations will be done offline, ensuring no data is sent to external servers.
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
