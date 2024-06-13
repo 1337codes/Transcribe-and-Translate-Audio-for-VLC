@@ -15,8 +15,10 @@ openai.api_key = 'YOUR_OPENAI_API_KEY'
 warnings.filterwarnings("ignore", message="FP16 is not supported on CPU; using FP32 instead")
 
 def extract_audio(video_path):
-    audio_path = "audio.wav"
-    print("Extracting audio from the video...")
+    video_dir, video_name = os.path.split(video_path)
+    audio_name = os.path.splitext(video_name)[0] + ".wav"
+    audio_path = os.path.join(video_dir, audio_name)
+    print(f"Extracting audio from the video to {audio_path}...")
     start_time = time.time()
     ffmpeg.input(video_path).output(audio_path, **{'q:a': 0, 'map': 'a'}).run()
     end_time = time.time()
